@@ -7,6 +7,7 @@ import { listOrders, cancelOrder } from "@/lib/api";
 import type { OrderSummary, OrderStatus } from "@/lib/types";
 import StatusBadge from "@/components/StatusBadge";
 import CreateOrderModal from "@/components/CreateOrderModal";
+import StatsBar from "@/components/StatsBar";
 
 type Tab = { label: string; status?: OrderStatus };
 
@@ -51,6 +52,8 @@ function OrdersContent() {
 
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [total, setTotal] = useState(0);
+  const [statsOrders, setStatsOrders] = useState<OrderSummary[]>([]);
+  const [statsTotal, setStatsTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -59,9 +62,19 @@ function OrdersContent() {
 
   const fetch = useCallback(async () => {
     try {
-      const data = await listOrders(activeTab.status);
-      setOrders(data.orders);
-      setTotal(data.total);
+      if (activeTab.status) {
+        const [data, allData] = await Promise.all([listOrders(activeTab.status), listOrders()]);
+        setOrders(data.orders);
+        setTotal(data.total);
+        setStatsOrders(allData.orders);
+        setStatsTotal(allData.total);
+      } else {
+        const data = await listOrders();
+        setOrders(data.orders);
+        setTotal(data.total);
+        setStatsOrders(data.orders);
+        setStatsTotal(data.total);
+      }
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -108,6 +121,9 @@ function OrdersContent() {
           + New Order
         </button>
       </div>
+
+      {/* Stats */}
+      <StatsBar orders={statsOrders} total={statsTotal} />
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 border-b border-gray-200">
