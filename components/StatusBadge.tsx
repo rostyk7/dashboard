@@ -19,7 +19,7 @@ export default function StatusBadge({ status }: { status: OrderStatus }) {
   return (
     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs ${className}`}>
       {status === "REVIEW" && (
-        <span className="mr-1 h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+        <span aria-hidden="true" className="mr-1 h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
       )}
       {label}
     </span>

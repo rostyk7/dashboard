@@ -14,7 +14,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 25
           cache: npm
 
       - run: npm ci
@@ -23,6 +23,9 @@ jobs:
 
       - name: Type check
         run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: npm run test:run
 
       - name: Build
         run: npm run build

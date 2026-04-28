@@ -1,6 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { createOrder } from "@/lib/api";
 
 const CARD_TOKENS = [
@@ -10,117 +13,171 @@ const CARD_TOKENS = [
   { value: "tok_do_not_honor",       label: "tok_do_not_honor — fails" },
 ];
 
+const schema = z.object({
+  customer_email: z.string().email("Enter a valid email address"),
+  amount: z
+    .number({ error: "Enter a number" })
+    .min(0.01, "Minimum $0.01")
+    .max(1_000_000, "Maximum $1,000,000"),
+  currency: z.enum(["USD", "EUR", "GBP"]),
+  card_token: z.string().min(1, "Select a card token"),
+});
+
+type FormValues = z.infer<typeof schema>;
+
 interface Props {
   onClose: () => void;
   onCreated: () => void;
 }
 
 export default function CreateOrderModal({ onClose, onCreated }: Props) {
-  const [email, setEmail] = useState("alice@example.com");
-  const [amount, setAmount] = useState("5000");
-  const [currency, setCurrency] = useState("USD");
-  const [cardToken, setCardToken] = useState(CARD_TOKENS[0].value);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const firstInputRef = useRef<HTMLInputElement | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
-    setError(null);
+  const {
+    register,
+    handleSubmit,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      customer_email: "alice@example.com",
+      amount: 5000,
+      currency: "USD",
+      card_token: "tok_success",
+    },
+  });
+
+  useEffect(() => {
+    firstInputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  async function onSubmit(data: FormValues) {
     try {
       await createOrder({
-        customer_email: email,
-        amount: Math.round(parseFloat(amount) * 100),
-        currency,
-        card_token: cardToken,
+        customer_email: data.customer_email,
+        amount: Math.round(data.amount * 100),
+        currency: data.currency,
+        card_token: data.card_token,
         metadata: {},
       });
       onCreated();
     } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setSubmitting(false);
+      setError("root", { message: (err as Error).message });
     }
   }
 
+  const { ref: emailRef, ...emailRest } = register("customer_email");
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+        className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6"
+      >
         <div className="flex items-center justify-between mb-5">
-          <h2 className="font-semibold text-gray-900">New Test Order</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">
+          <h2 id="modal-title" className="font-semibold text-gray-900">New Test Order</h2>
+          <button
+            onClick={onClose}
+            aria-label="Close dialog"
+            className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+          >
             ×
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
+            <label htmlFor="customer_email" className="block text-xs font-medium text-gray-600 mb-1">
               Customer email
             </label>
             <input
+              id="customer_email"
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-400"
+              autoComplete="email"
+              aria-invalid={!!errors.customer_email}
+              aria-describedby={errors.customer_email ? "email-error" : undefined}
+              {...emailRest}
+              ref={(el) => { emailRef(el); firstInputRef.current = el; }}
+              className={`w-full text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-400 ${
+                errors.customer_email ? "border-red-400" : "border-gray-300"
+              }`}
             />
+            {errors.customer_email && (
+              <p id="email-error" role="alert" className="mt-1 text-xs text-red-600">
+                {errors.customer_email.message}
+              </p>
+            )}
           </div>
 
           <div className="flex gap-3">
             <div className="flex-1">
-              <label className="block text-xs font-medium text-gray-600 mb-1">
+              <label htmlFor="amount" className="block text-xs font-medium text-gray-600 mb-1">
                 Amount (USD)
               </label>
               <input
+                id="amount"
                 type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
                 min="0.01"
                 step="0.01"
-                required
-                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                aria-invalid={!!errors.amount}
+                aria-describedby={errors.amount ? "amount-error" : undefined}
+                {...register("amount", { valueAsNumber: true })}
+                className={`w-full text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-400 ${
+                  errors.amount ? "border-red-400" : "border-gray-300"
+                }`}
               />
+              {errors.amount && (
+                <p id="amount-error" role="alert" className="mt-1 text-xs text-red-600">
+                  {errors.amount.message}
+                </p>
+              )}
             </div>
             <div className="w-24">
-              <label className="block text-xs font-medium text-gray-600 mb-1">
+              <label htmlFor="currency" className="block text-xs font-medium text-gray-600 mb-1">
                 Currency
               </label>
               <select
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value)}
+                id="currency"
+                {...register("currency")}
                 className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-400"
               >
-                <option>USD</option>
-                <option>EUR</option>
-                <option>GBP</option>
+                <option value="USD">USD</option>
+                <option value="EUR">EUR</option>
+                <option value="GBP">GBP</option>
               </select>
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
+            <label htmlFor="card_token" className="block text-xs font-medium text-gray-600 mb-1">
               Card token
             </label>
             <select
-              value={cardToken}
-              onChange={(e) => setCardToken(e.target.value)}
+              id="card_token"
+              {...register("card_token")}
               className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-400"
             >
               {CARD_TOKENS.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
+                <option key={t.value} value={t.value}>{t.label}</option>
               ))}
             </select>
           </div>
 
-          {error && (
-            <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
-              {error}
+          {errors.root && (
+            <div role="alert" className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
+              {errors.root.message}
             </div>
           )}
 
@@ -134,10 +191,11 @@ export default function CreateOrderModal({ onClose, onCreated }: Props) {
             </button>
             <button
               type="submit"
-              disabled={submitting}
+              disabled={isSubmitting}
+              aria-busy={isSubmitting}
               className="flex-1 bg-slate-900 text-white text-sm py-2 rounded-lg hover:bg-slate-700 disabled:opacity-50 transition-colors"
             >
-              {submitting ? "Creating…" : "Create Order"}
+              {isSubmitting ? "Creating…" : "Create Order"}
             </button>
           </div>
         </form>
